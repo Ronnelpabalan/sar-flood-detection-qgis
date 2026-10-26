@@ -5,12 +5,14 @@ import os
 from qgis.core import QgsProcessingProvider
 from qgis.PyQt.QtGui import QIcon
 
+from .algorithms.change_detection import ChangeDetectionAlgorithm
 from .algorithms.water_map import WaterMapAlgorithm
 
 
 class SarFloodDetectionProvider(QgsProcessingProvider):
     def loadAlgorithms(self):
         self.addAlgorithm(WaterMapAlgorithm())
+        self.addAlgorithm(ChangeDetectionAlgorithm())
 
     def id(self):
         return "sarflood"
