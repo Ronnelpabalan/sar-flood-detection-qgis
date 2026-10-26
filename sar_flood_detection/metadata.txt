@@ -1,0 +1,17 @@
+[general]
+name=SAR Flood Detection
+qgisMinimumVersion=3.40
+description=Flood mapping from Sentinel-1 SAR: speckle filtering, thresholding and change detection.
+about=Processing tools that map surface water and floods from Sentinel-1 backscatter rasters (e.g. exported from SNAP or Google Earth Engine). Optional Lee or median speckle filtering, fixed or Otsu thresholds, and pre/post-event change detection. Outputs a water mask raster and optional polygons.
+version=0.1.0
+author=Ronnel Pabalan
+email=rupabalan@alum.up.edu.ph
+repository=https://github.com/Ronnelpabalan/sar-flood-detection-qgis
+tracker=https://github.com/Ronnelpabalan/sar-flood-detection-qgis/issues
+homepage=https://github.com/Ronnelpabalan/sar-flood-detection-qgis
+hasProcessingProvider=yes
+tags=sar,sentinel-1,flood,water,remote sensing,processing,change detection
+category=Analysis
+icon=icon.svg
+experimental=True
+deprecated=False
