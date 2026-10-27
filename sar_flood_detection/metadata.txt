@@ -1,9 +1,11 @@
 [general]
 name=SAR Flood Detection
 qgisMinimumVersion=3.40
-description=Flood mapping from Sentinel-1 SAR: speckle filtering, thresholding and change detection.
-about=Processing tools that map surface water and floods from Sentinel-1 backscatter rasters (e.g. exported from SNAP or Google Earth Engine). Optional Lee or median speckle filtering, fixed or Otsu thresholds, and pre/post-event change detection. Outputs a class raster (water mask or flood map) styled with a transparent background.
-version=0.1.0
+description=Flood mapping from Sentinel-1 SAR, starting from the raw GRD product: terrain correction, speckle filtering, thresholding and change detection.
+about=Processing tools that map surface water and floods from Sentinel-1. "Prepare Sentinel-1 GRD" reads the downloaded .SAFE.zip directly and produces terrain-corrected sigma0 without other software: calibration, thermal noise removal, precise orbits from ESA, Copernicus GLO-30 DEM plus EGM2008 geoid, Range-Doppler terrain correction and a layover/shadow mask (orbit files and DEM tiles are downloaded once and cached). The flood tools work on any Sentinel-1 backscatter raster: optional Lee or median speckle filtering, fixed or Otsu thresholds, and pre/post-event change detection, giving a class raster styled with a transparent background.
+version=0.2.0
+changelog=0.2.0: new tool "Prepare Sentinel-1 GRD (from SAFE zip)": calibration, thermal noise removal, precise orbits, Copernicus DEM, Range-Doppler terrain correction, layover/shadow mask.
+    0.1.0: water map and change-detection tools.
 author=Ronnel Pabalan
 email=rupabalan@alum.up.edu.ph
 repository=https://github.com/Ronnelpabalan/sar-flood-detection-qgis
