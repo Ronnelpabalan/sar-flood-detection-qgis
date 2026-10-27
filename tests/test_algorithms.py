@@ -180,6 +180,40 @@ class TestAlgorithms(unittest.TestCase):
                 "PRE": pre, "PRE_BAND": 1, "POST": post, "POST_BAND": 1,
                 "OUTPUT": self.out("bad.tif")})
 
+    # ---- styling when QGIS loads the result ----
+
+    def test_loaded_output_has_transparent_not_water_class(self):
+        from qgis.core import (QgsProcessingContext, QgsProcessingOutputLayerDefinition,
+                               QgsProject, QgsRasterLayer)
+        context = QgsProcessingContext()
+        context.setProject(QgsProject.instance())
+        path = self.out("styled.tif")
+        params = {"INPUT": self.db_path, "BAND": 2, "UNITS": 0, "FILTER": 1, "WINDOW": 5,
+                  "METHOD": 0, "THRESHOLD": -23.3,
+                  "OUTPUT": QgsProcessingOutputLayerDefinition(path, QgsProject.instance())}
+        alg = QgsApplication.processingRegistry().createAlgorithmById("sarflood:watermapsingleimage")
+        results, ok = alg.run(params, context, QgsProcessingFeedback())
+        self.assertTrue(ok)
+        self.assertTrue(context.willLoadLayerOnCompletion(results["OUTPUT"]))
+        styler = context.layerToLoadOnCompletionDetails(results["OUTPUT"]).postProcessor()
+        self.assertIsNotNone(styler)
+
+        layer = QgsRasterLayer(results["OUTPUT"], "Water mask")
+        styler.postProcessLayer(layer, context, QgsProcessingFeedback())
+        renderer = layer.renderer()
+        self.assertEqual(renderer.type(), "paletted")
+        classes = {c.value: c for c in renderer.classes()}
+        self.assertEqual(classes[0].label, "Not water")
+        self.assertEqual(classes[0].color.alpha(), 0)          # transparent over the SAR image
+        self.assertEqual(classes[1].label, "Water")
+        self.assertEqual(classes[1].color.alpha(), 255)
+
+    def test_output_file_palette_is_not_black(self):
+        mask_path = self.water_map("palette.tif")["OUTPUT"]
+        ds = gdal.Open(mask_path)                 # keep a reference, or GDAL closes the file early
+        table = ds.GetRasterBand(1).GetRasterColorTable()
+        self.assertEqual(table.GetColorEntry(0)[:3], (255, 255, 255))   # not water: white in the file
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,9 +13,10 @@ from qgis.core import (
 
 from ..core.thresholds import NODATA, classify_below, otsu_threshold
 from ..raster_io import read_band, write_classes
-from .common import DEFAULT_WATER_THRESHOLD, FILTER_OPTIONS, UNIT_OPTIONS, driver_for, prepare_db
+from .common import (DEFAULT_WATER_THRESHOLD, FILTER_OPTIONS, UNIT_OPTIONS, driver_for, file_palette,
+                     prepare_db, style_on_load)
 
-WATER_COLORS = {0: (0, 0, 0, 0), 1: (31, 119, 180, 255)}      # not water transparent, water blue
+WATER_CLASSES = [(0, "Not water", (255, 255, 255, 0)), (1, "Water", (31, 119, 180, 255))]
 
 
 class WaterMapAlgorithm(QgsProcessingAlgorithm):
@@ -85,7 +86,8 @@ class WaterMapAlgorithm(QgsProcessingAlgorithm):
                     "area that contains both water and land.")
 
         mask = classify_below(db, threshold)
-        write_classes(out_path, mask, grid, WATER_COLORS, driver_for(out_path))
+        write_classes(out_path, mask, grid, file_palette(WATER_CLASSES), driver_for(out_path))
+        style_on_load(context, out_path, WATER_CLASSES)
         feedback.setProgress(100)
 
         valid = mask != NODATA

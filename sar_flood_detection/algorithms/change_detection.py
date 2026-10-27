@@ -14,13 +14,14 @@ from qgis.core import (
 from ..core.change import DRY, FLOOD, PERMANENT_WATER, change_detection
 from ..core.thresholds import NODATA
 from ..raster_io import read_band, same_grid, write_classes
-from .common import DEFAULT_WATER_THRESHOLD, FILTER_OPTIONS, UNIT_OPTIONS, driver_for, prepare_db
+from .common import (DEFAULT_WATER_THRESHOLD, FILTER_OPTIONS, UNIT_OPTIONS, driver_for, file_palette,
+                     prepare_db, style_on_load)
 
-CLASS_COLORS = {
-    DRY: (0, 0, 0, 0),                      # transparent
-    FLOOD: (214, 39, 40, 255),              # red
-    PERMANENT_WATER: (31, 119, 180, 255),   # blue
-}
+CLASSES = [
+    (DRY, "Dry or no clear change", (255, 255, 255, 0)),   # transparent when loaded
+    (FLOOD, "Flood", (214, 39, 40, 255)),                     # red
+    (PERMANENT_WATER, "Permanent water", (31, 119, 180, 255)), # blue
+]
 
 
 class ChangeDetectionAlgorithm(QgsProcessingAlgorithm):
@@ -89,7 +90,8 @@ class ChangeDetectionAlgorithm(QgsProcessingAlgorithm):
             return {}
 
         classes = change_detection(pre_db, post_db, water_threshold, min_drop)
-        write_classes(out_path, classes, post_grid, CLASS_COLORS, driver_for(out_path))
+        write_classes(out_path, classes, post_grid, file_palette(CLASSES), driver_for(out_path))
+        style_on_load(context, out_path, CLASSES)
         feedback.setProgress(100)
 
         valid = classes != NODATA
