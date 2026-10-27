@@ -8,6 +8,8 @@ from osgeo import gdal
 
 from .core.annotation import parse_geolocation_grid, parse_product_info, window_for_bbox
 from .core.calibration import calibrate, parse_calibration, parse_noise
+from .core.orbit import Orbit, parse_annotation_orbit, parse_time
+from .orbit_files import read_orbit_file
 
 # e.g. measurement/s1a-iw-grd-vh-20220908t...-002.tiff, annotation/calibration/noise-s1a-iw-grd-vh-....xml
 _FILE_PATTERN = re.compile(
@@ -80,6 +82,16 @@ class SafeProduct:
 
     def geolocation_grid(self, pol):
         return parse_geolocation_grid(self.read_text(pol, "annotation"))
+
+    def orbit(self, pol, orbit_file=None, margin=60.0):
+        """Orbit for the image time: from a precise/restituted orbit file if given, else from the annotation."""
+        info = self.info(pol)
+        start, stop = parse_time(info["start_time"]), parse_time(info["stop_time"])
+        if orbit_file:
+            vectors = read_orbit_file(orbit_file)
+        else:
+            vectors = parse_annotation_orbit(self.read_text(pol, "annotation"))
+        return Orbit(vectors, start, stop, margin)
 
     def window_for_bbox(self, pol, bbox, margin=200):
         """(col0, row0, width, height) covering a lon/lat box (lon_min, lat_min, lon_max, lat_max)."""

@@ -61,6 +61,29 @@ def annotation_xml(lines, samples, points, pol="VH"):
         "</geolocationGridPointList></geolocationGrid></product>")
 
 
+def eof_xml(times_utc, positions, velocities):
+    """Orbit file (.EOF) text; times_utc as 'YYYY-MM-DDTHH:MM:SS.ffffff'."""
+    osv = "".join(
+        f"<OSV><TAI>TAI={t}</TAI><UTC>UTC={t}</UTC><UT1>UT1={t}</UT1><Absolute_Orbit>+4857</Absolute_Orbit>"
+        f"<X unit=\"m\">{p[0]:.6f}</X><Y unit=\"m\">{p[1]:.6f}</Y><Z unit=\"m\">{p[2]:.6f}</Z>"
+        f"<VX unit=\"m/s\">{v[0]:.9f}</VX><VY unit=\"m/s\">{v[1]:.9f}</VY><VZ unit=\"m/s\">{v[2]:.9f}</VZ>"
+        f"<Quality>NOMINAL</Quality></OSV>"
+        for t, p, v in zip(times_utc, positions, velocities))
+    return (f"<Earth_Explorer_File><Earth_Explorer_Header/><Data_Block type=\"xml\">"
+            f"<List_of_OSVs count=\"{len(times_utc)}\">{osv}</List_of_OSVs></Data_Block></Earth_Explorer_File>")
+
+
+def annotation_orbit_xml(times_utc, positions, velocities):
+    """Product annotation text with only an orbitList (as in generalAnnotation)."""
+    orbits = "".join(
+        f"<orbit><time>{t}</time><frame>Earth Fixed</frame>"
+        f"<position><x>{p[0]:.6f}</x><y>{p[1]:.6f}</y><z>{p[2]:.6f}</z></position>"
+        f"<velocity><x>{v[0]:.9f}</x><y>{v[1]:.9f}</y><z>{v[2]:.9f}</z></velocity></orbit>"
+        for t, p, v in zip(times_utc, positions, velocities))
+    return (f"<product><generalAnnotation><orbitList count=\"{len(times_utc)}\">{orbits}</orbitList>"
+            f"</generalAnnotation></product>")
+
+
 def simple_grid(lines, samples, lon0=105.0, lat0=20.0, step=0.001):
     """Geolocation points on a regular lon/lat grid: pixel -> longitude, line -> latitude (decreasing)."""
     pts = []
