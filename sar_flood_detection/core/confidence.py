@@ -6,7 +6,9 @@ Each piece of evidence becomes a score from 0 to 1 that rises smoothly
     1  the post-event image is dark       0.5 at post = water_threshold
     2  the backscatter dropped            0.5 at a drop of min_drop
     3  it was not water before the event  0.5 at pre = water_threshold
-    5a the ground is flat (optional)      0.5 at max_slope degrees
+    5a the ground is flat (optional)      0.5 at max_slope degrees, with the slope taken over
+                                          slope_window metres; ignored for cells less than
+                                          near_water metres above the nearest permanent water
     5b the ground is low (optional)       0.5 at max_height metres above the nearest permanent water
 
 (4, layover and shadow, is handled by the invalid mask: those pixels get no score.)
@@ -16,6 +18,12 @@ so the weakest evidence decides. Without terrain, a score above 0.5 means
 the same pixels as change_detection() (apart from values exactly on a
 threshold); terrain can only lower the score.
 
+Why the slope is ignored near the water: a cell at the water level can
+flood whatever the slope there. The Copernicus DEM is a surface model, so
+river banks, dikes and tree lines look steep; on Thanh Hoa 2025 a plain
+10 m slope test mostly removed dark cells on river banks (median 50 m from
+the river, 1.8 m above it).
+
 This is a confidence score, not a calibrated probability: it has not been
 fitted to reference flood maps.
 
@@ -23,7 +31,7 @@ Classes: NOT_FLOOD = 0, LOW = 1, MEDIUM = 2, HIGH = 3, PERMANENT_WATER = 4, NODA
 """
 
 import numpy as np
-from scipy.ndimage import distance_transform_edt
+from scipy.ndimage import distance_transform_edt, uniform_filter
 
 from .thresholds import NODATA
 
@@ -40,9 +48,18 @@ def rising(x, centre, width):
     return (1.0 / (1.0 + np.exp(-np.clip(z, -50.0, 50.0)))).astype("float32")
 
 
-def slope_degrees(height, spacing):
-    """Terrain slope in degrees from a height grid with square cells of `spacing` metres."""
-    dy, dx = np.gradient(np.asarray(height, dtype="float32"), spacing)
+def slope_degrees(height, spacing, window=None):
+    """Terrain slope in degrees; spacing is the cell size in metres, or a (row, column) pair.
+
+    window: optional distance in metres over which heights are averaged first, so the slope
+    describes the land form rather than single trees, houses or dikes in a surface model.
+    """
+    row_m, col_m = (spacing, spacing) if np.isscalar(spacing) else spacing
+    height = np.asarray(height, dtype="float32")
+    if window:
+        size = [max(1, int(round(window / m))) | 1 for m in (row_m, col_m)]   # odd number of cells
+        height = uniform_filter(height, size, mode="nearest")
+    dy, dx = np.gradient(height, row_m, col_m)
     return np.degrees(np.arctan(np.hypot(dx, dy)))
 
 
@@ -72,14 +89,18 @@ def height_above_water(height, water, step=3):
 
 
 def flood_confidence(pre_db, post_db, water_threshold=-23.3, min_drop=3.0, width=1.0, drop_width=1.0,
-                     height=None, spacing=10.0, max_slope=5.0, slope_width=1.0,
-                     max_height=10.0, height_width=2.0, invalid=None):
+                     height=None, spacing=10.0, max_slope=5.0, slope_width=1.0, slope_window=90.0,
+                     near_water=3.0, near_width=0.5, max_height=10.0, height_width=2.0, invalid=None):
     """Flood confidence score (0-1) and permanent-water mask.
 
     pre_db, post_db: images in dB on the same grid.
     width, drop_width: dB over which scores 1-3 go from 0.5 to about 0.73.
     height: optional ground height (m) on the same grid; turns on the terrain scores 5a and 5b.
         Where height is NaN, terrain is not used.
+    spacing: cell size in metres, or a (row, column) pair, for the slope.
+    slope_window: metres over which heights are averaged before the slope is taken.
+    near_water, near_width: the slope is ignored (score 1) for cells this many metres or less above
+        the nearest permanent water, with a smooth change over about near_width metres.
     invalid: optional boolean mask (e.g. layover or shadow on either date); those pixels get no score.
 
     Returns a dict:
@@ -104,8 +125,11 @@ def flood_confidence(pre_db, post_db, water_threshold=-23.3, min_drop=3.0, width
         height = np.asarray(height, dtype="float32")
         if height.shape != post.shape:
             raise ValueError(f"The height grid differs in shape from the images: {height.shape} vs {post.shape}.")
-        flat = rising(max_slope - slope_degrees(height, spacing), 0.0, slope_width)
-        low = rising(max_height - height_above_water(height, permanent), 0.0, height_width)
+        above_water = height_above_water(height, permanent)
+        flat = rising(max_slope - slope_degrees(height, spacing, slope_window), 0.0, slope_width)
+        flat = np.fmax(flat, rising(near_water - above_water, 0.0, near_width))   # at the water level
+        low = rising(max_height - above_water, 0.0, height_width)
+        del above_water
         evidence["flat"] = np.where(np.isnan(flat), np.float32(1), flat)    # no height: terrain not used
         evidence["low"] = np.where(np.isnan(low), np.float32(1), low)
 

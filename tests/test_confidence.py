@@ -21,6 +21,8 @@ class TestPieces(unittest.TestCase):
     def test_slope_of_a_ramp(self):
         height = np.tile(np.arange(6, dtype="float32") * 10.0, (4, 1))   # rises 10 m per 10 m cell
         np.testing.assert_allclose(slope_degrees(height, 10.0), 45.0, atol=1e-4)
+        np.testing.assert_allclose(slope_degrees(height, (5.0, 10.0)), 45.0, atol=1e-4)   # rows do not matter here
+        np.testing.assert_allclose(slope_degrees(height.T, (5.0, 10.0)), 63.4349, atol=1e-3)  # 10 m rise per 5 m
 
     def test_height_above_nearest_water(self):
         height = np.array([[2.0, 3.0, 5.0, 9.0, 1.0, 1.5]], dtype="float32")
@@ -78,6 +80,26 @@ class TestFloodConfidence(unittest.TestCase):
         self.assertTrue((classes[:, 0] == 4).all())
         self.assertTrue((classes[:, 1] == HIGH).all())        # flat, at river level
         self.assertTrue((classes[:, 4] == NOT_FLOOD).all())   # steep and 200 m up
+
+    def test_slope_window_ignores_a_tree_line(self):
+        height = np.zeros((30, 30), dtype="float32")
+        height[:, 15] = 5.0                                     # 5 m tree line or dike on flat land
+        self.assertGreater(slope_degrees(height, 10.0)[10, 14], 10.0)
+        self.assertLess(slope_degrees(height, 10.0, window=90.0)[10, 14], 5.0)
+
+    def test_slope_is_ignored_at_the_water_level(self):
+        # River in columns 0-1; column 2 is at the river level at the foot of a 45 degree bank.
+        height = np.zeros((20, 12), dtype="float32")
+        height[:, 3:] = (np.arange(1, 10, dtype="float32") * 10.0)[None, :]
+        pre = np.full((20, 12), -10.0, dtype="float32")
+        post = np.full((20, 12), -28.0, dtype="float32")
+        pre[:, :2] = -27.0
+        r = flood_confidence(pre, post, height=height)
+        classes = confidence_classes(r["score"], r["permanent"])
+        self.assertTrue((classes[:, 2] == HIGH).all())           # the bank foot stays flood
+        self.assertTrue((classes[:, 6:] == NOT_FLOOD).all())     # 40 m and more up the slope
+        no_exemption = flood_confidence(pre, post, height=height, near_water=-10.0)
+        self.assertTrue((no_exemption["evidence"]["flat"][:, 2] < 0.01).all())   # the slope alone says no
 
     def test_missing_height_leaves_terrain_out(self):
         height = np.full((2, 3), np.nan, dtype="float32")

@@ -82,3 +82,17 @@ def write_classes(path, classes, grid, colors, driver="GTiff"):
     b.WriteArray(classes)
     ds.FlushCache()
     ds = None
+
+
+def cell_size_m(grid):
+    """Cell size in metres as (row, column); for latitude/longitude grids, at the grid centre."""
+    gt = grid["geotransform"]
+    srs = osr.SpatialReference()
+    srs.ImportFromWkt(grid["projection"])
+    row, col = abs(gt[5]), abs(gt[1])
+    if srs.IsGeographic():
+        lat = gt[3] + gt[5] * grid["size"][1] / 2
+        metres_per_degree = 111320.0
+        return row * metres_per_degree, col * metres_per_degree * np.cos(np.radians(lat))
+    unit = srs.GetLinearUnits() or 1.0
+    return row * unit, col * unit

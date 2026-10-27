@@ -3,13 +3,16 @@
 import os
 
 from qgis.core import (
+    QgsColorRampShader,
     QgsContrastEnhancement,
     QgsPalettedRasterRenderer,
     QgsProcessingException,
     QgsProcessingLayerPostProcessorInterface,
     QgsRasterFileWriter,
     QgsRasterMinMaxOrigin,
+    QgsRasterShader,
     QgsSingleBandGrayRenderer,
+    QgsSingleBandPseudoColorRenderer,
 )
 from qgis.PyQt.QtGui import QColor
 
@@ -86,6 +89,27 @@ class GrayStyler(QgsProcessingLayerPostProcessorInterface):
         layer.triggerRepaint()
 
 
+class ScoreStyler(QgsProcessingLayerPostProcessorInterface):
+    """Shows a 0-1 score with a colour ramp; colours: [(value, (red, green, blue, alpha), label)]."""
+
+    def __init__(self, colors):
+        super().__init__()
+        self.colors = colors
+
+    def postProcessLayer(self, layer, context, feedback):
+        ramp = QgsColorRampShader(self.colors[0][0], self.colors[-1][0])
+        ramp.setColorRampType(QgsColorRampShader.Interpolated)
+        ramp.setColorRampItemList([QgsColorRampShader.ColorRampItem(value, QColor(*rgba), label)
+                                   for value, rgba, label in self.colors])
+        shader = QgsRasterShader()
+        shader.setRasterShaderFunction(ramp)
+        renderer = QgsSingleBandPseudoColorRenderer(layer.dataProvider(), 1, shader)
+        renderer.setClassificationMin(self.colors[0][0])
+        renderer.setClassificationMax(self.colors[-1][0])
+        layer.setRenderer(renderer)
+        layer.triggerRepaint()
+
+
 # QGIS runs each tool on a temporary copy of the algorithm, so stylers are kept
 # here (one per output path) until QGIS has loaded and styled the layer.
 _STYLERS = {}
@@ -105,3 +129,8 @@ def style_on_load(context, path, classes):
 def gray_on_load(context, path, band):
     """Show one band of an output in grey (2-98 % stretch) when QGIS loads it."""
     _attach(context, path, GrayStyler(band))
+
+
+def score_on_load(context, path, colors):
+    """Show a 0-1 score with a colour ramp when QGIS loads it."""
+    _attach(context, path, ScoreStyler(colors))
