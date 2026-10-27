@@ -115,6 +115,7 @@ class Orbit:
         self.times = t[keep]
         self._x = CubicHermiteSpline(self.times, vectors["positions"][keep], vectors["velocities"][keep], axis=0)
         self._v = self._x.derivative()
+        self._a = self._x.derivative(2)
 
     def _check(self, t):
         t = np.asarray(t, dtype="float64")
@@ -129,3 +130,7 @@ class Orbit:
     def velocity(self, t):
         """Earth-fixed velocity (m/s) at time(s) t; shape (..., 3)."""
         return self._v(self._check(t))
+
+    def acceleration(self, t):
+        """Earth-fixed acceleration (m/s²) at time(s) t; shape (..., 3)."""
+        return self._a(self._check(t))

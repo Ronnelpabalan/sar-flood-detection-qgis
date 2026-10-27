@@ -8,6 +8,7 @@ from osgeo import gdal
 
 from .core.annotation import parse_geolocation_grid, parse_product_info, window_for_bbox
 from .core.calibration import calibrate, parse_calibration, parse_noise
+from .core.geometry import RadarGeometry, parse_geometry
 from .core.orbit import Orbit, parse_annotation_orbit, parse_time
 from .orbit_files import read_orbit_file
 
@@ -92,6 +93,10 @@ class SafeProduct:
         else:
             vectors = parse_annotation_orbit(self.read_text(pol, "annotation"))
         return Orbit(vectors, start, stop, margin)
+
+    def geometry(self, pol, orbit_file=None):
+        """Range-Doppler model that maps ground points to (line, pixel) in this image."""
+        return RadarGeometry(parse_geometry(self.read_text(pol, "annotation")), self.orbit(pol, orbit_file))
 
     def window_for_bbox(self, pol, bbox, margin=200):
         """(col0, row0, width, height) covering a lon/lat box (lon_min, lat_min, lon_max, lat_max)."""

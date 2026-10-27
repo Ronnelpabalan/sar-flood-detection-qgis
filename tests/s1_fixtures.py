@@ -84,6 +84,31 @@ def annotation_orbit_xml(times_utc, positions, velocities):
             f"</generalAnnotation></product>")
 
 
+def geometry_xml(first_line_utc, line_interval, slant_range_time, range_spacing, lines, samples,
+                 frequency, conversions):
+    """Annotation text with image timing and slant-to-ground-range records.
+
+    conversions: list of (azimuth_time_utc, sr0, srgr_coefficients). The records sit in
+    coordinateConversion/coordinateConversionList, as in real products.
+    """
+    records = "".join(
+        f"<coordinateConversion><azimuthTime>{t}</azimuthTime><slantRangeTime>{slant_range_time}</slantRangeTime>"
+        f"<sr0>{sr0}</sr0><srgrCoefficients count=\"{len(c)}\">{_join(c)}</srgrCoefficients>"
+        f"<gr0>0.0</gr0><grsrCoefficients count=\"2\">{sr0} 1.0</grsrCoefficients></coordinateConversion>"
+        for t, sr0, c in conversions)
+    return (
+        "<product><generalAnnotation><productInformation><pass>Descending</pass>"
+        f"<radarFrequency>{frequency}</radarFrequency></productInformation></generalAnnotation>"
+        "<imageAnnotation><imageInformation>"
+        f"<productFirstLineUtcTime>{first_line_utc}</productFirstLineUtcTime>"
+        f"<azimuthTimeInterval>{line_interval}</azimuthTimeInterval><slantRangeTime>{slant_range_time}</slantRangeTime>"
+        f"<rangePixelSpacing>{range_spacing}</rangePixelSpacing><azimuthPixelSpacing>10.0</azimuthPixelSpacing>"
+        f"<numberOfLines>{lines}</numberOfLines><numberOfSamples>{samples}</numberOfSamples>"
+        "</imageInformation></imageAnnotation>"
+        f"<coordinateConversion><coordinateConversionList count=\"{len(conversions)}\">{records}"
+        "</coordinateConversionList></coordinateConversion></product>")
+
+
 def simple_grid(lines, samples, lon0=105.0, lat0=20.0, step=0.001):
     """Geolocation points on a regular lon/lat grid: pixel -> longitude, line -> latitude (decreasing)."""
     pts = []
