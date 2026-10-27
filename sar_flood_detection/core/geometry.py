@@ -103,10 +103,30 @@ class RadarGeometry:
 
     def locate(self, xyz):
         """(line, pixel) as float arrays for Earth-fixed points xyz (n, 3); may fall outside the image."""
+        v = self.observe(xyz)
+        return v["line"], v["pixel"]
+
+    def observe(self, xyz):
+        """Everything about how the satellite sees points xyz (n, 3), as a dict of arrays.
+
+        line, pixel: image position; slant_range (m); look_angle: angle (rad) between
+        straight down and the line of sight; ground_angle: angle (rad) at the Earth's
+        centre between the satellite and the point, which orders points by distance
+        from the ground track.
+        """
+        xyz = np.atleast_2d(np.asarray(xyz, dtype="float64"))
         t, slant_range = self.zero_doppler(xyz)
-        line = (t - self.p["first_line_time"]) / self.p["line_interval"]
-        pixel = self.ground_range(slant_range, t) / self.p["range_spacing"]
-        return line, pixel
+        sat = self.orbit.position(t)
+        sat_r, xyz_r = np.linalg.norm(sat, axis=1), np.linalg.norm(xyz, axis=1)
+        cos_look = np.sum((xyz - sat) * -sat, 1) / (slant_range * sat_r)
+        cos_ground = np.sum(xyz * sat, 1) / (xyz_r * sat_r)
+        return {
+            "line": (t - self.p["first_line_time"]) / self.p["line_interval"],
+            "pixel": self.ground_range(slant_range, t) / self.p["range_spacing"],
+            "slant_range": slant_range,
+            "look_angle": np.arccos(np.clip(cos_look, -1, 1)),
+            "ground_angle": np.arccos(np.clip(cos_ground, -1, 1)),
+        }
 
     def to_image(self, lat, lon, height):
         """(line, pixel) for WGS84 latitude, longitude (degrees) and ellipsoidal height (m)."""

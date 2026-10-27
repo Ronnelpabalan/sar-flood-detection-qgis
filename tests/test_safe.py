@@ -97,6 +97,12 @@ class TestSafeProduct(unittest.TestCase):
         expected[:3] = np.nan
         np.testing.assert_allclose(out, expected, rtol=1e-5)
 
+    def test_strips_give_the_same_result(self):
+        p = self.SafeProduct(self.zip_path)
+        window = (2, 3, SAMPLES - 4, 17)
+        np.testing.assert_array_equal(p.backscatter("VH", window, strip_rows=4),
+                                      p.backscatter("VH", window, strip_rows=1000))
+
     def test_missing_polarisation_raises(self):
         with self.assertRaises(ValueError):
             self.SafeProduct(self.zip_path).read_dn("HH")

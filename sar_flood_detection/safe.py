@@ -4,6 +4,7 @@ import os
 import re
 import zipfile
 
+import numpy as np
 from osgeo import gdal
 
 from .core.annotation import parse_geolocation_grid, parse_product_info, window_for_bbox
@@ -112,12 +113,20 @@ class SafeProduct:
             window = (0, 0, ds.RasterXSize, ds.RasterYSize)
         return ds.GetRasterBand(1).ReadAsArray(*window)
 
-    def backscatter(self, pol, window=None, kind="sigmaNought", remove_noise=True):
-        """Calibrated backscatter (linear power, float32) for a window; NaN where there is no data."""
+    def backscatter(self, pol, window=None, kind="sigmaNought", remove_noise=True, strip_rows=1024):
+        """Calibrated backscatter (linear power, float32) for a window; NaN where there is no data.
+
+        Works in strips of rows, so the float64 work arrays stay small.
+        """
         if window is None:
             info = self.info(pol)
             window = (0, 0, info["samples"], info["lines"])
-        dn = self.read_dn(pol, window)
+        col0, row0, width, height = window
         cal = parse_calibration(self.read_text(pol, "calibration"), kind)
         noise = parse_noise(self.read_text(pol, "noise")) if remove_noise else None
-        return calibrate(dn, window[1], window[0], cal, noise)
+        out = np.empty((height, width), np.float32)
+        for r in range(0, height, strip_rows):
+            n = min(strip_rows, height - r)
+            dn = self.read_dn(pol, (col0, row0 + r, width, n))
+            out[r:r + n] = calibrate(dn, row0 + r, col0, cal, noise)
+        return out

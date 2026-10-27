@@ -42,6 +42,25 @@ def same_grid(a, b):
     return bool(sa.IsSame(sb))
 
 
+def write_bands(path, bands, grid, names=None):
+    """Write float32 bands (list of 2-D arrays) with NaN as nodata; names become band descriptions."""
+    width, height = grid["size"]
+    ds = gdal.GetDriverByName("GTiff").Create(path, width, height, len(bands), gdal.GDT_Float32,
+                                              options=["COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "BIGTIFF=IF_SAFER"])
+    if ds is None:
+        raise IOError(f"Cannot create raster: {path}")
+    ds.SetGeoTransform(grid["geotransform"])
+    ds.SetProjection(grid["projection"])
+    for i, data in enumerate(bands):
+        b = ds.GetRasterBand(i + 1)
+        b.SetNoDataValue(float("nan"))
+        if names:
+            b.SetDescription(names[i])
+        b.WriteArray(data)
+    ds.FlushCache()
+    ds = None
+
+
 def write_classes(path, classes, grid, colors, driver="GTiff"):
     """Write a uint8 class raster with NODATA set and a colour table.
 
