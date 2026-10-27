@@ -180,6 +180,21 @@ class TestAlgorithms(unittest.TestCase):
                 "PRE": pre, "PRE_BAND": 1, "POST": post, "POST_BAND": 1,
                 "OUTPUT": self.out("bad.tif")})
 
+    # ---- prepare GRD (the full run on real data is checked by hand; see README) ----
+
+    def test_prepare_grd_is_registered(self):
+        alg = QgsApplication.processingRegistry().algorithmById("sarflood:preparegrd")
+        self.assertIsNotNone(alg)
+        names = {p.name() for p in alg.parameterDefinitions()}
+        self.assertTrue({"INPUT", "EXTENT", "POLARISATIONS", "SPACING", "ORBIT", "DATA_FOLDER",
+                         "DOWNLOAD", "OUTPUT", "MASK"} <= names)
+
+    def test_prepare_grd_rejects_other_files(self):
+        with self.assertRaises(QgsProcessingException):
+            self.run_alg("sarflood:preparegrd", {
+                "INPUT": self.db_path, "EXTENT": "105.4,106.0,19.6,20.2 [EPSG:4326]",
+                "DOWNLOAD": False, "OUTPUT": self.out("not_grd.tif")})
+
     # ---- styling when QGIS loads the result ----
 
     def test_loaded_output_has_transparent_not_water_class(self):
@@ -207,6 +222,21 @@ class TestAlgorithms(unittest.TestCase):
         self.assertEqual(classes[0].color.alpha(), 0)          # transparent over the SAR image
         self.assertEqual(classes[1].label, "Water")
         self.assertEqual(classes[1].color.alpha(), 255)
+
+    def test_gray_styler_shows_one_band_stretched(self):
+        from qgis.core import QgsProcessingContext, QgsRasterLayer
+        from sar_flood_detection.algorithms.common import GrayStyler
+        layer = QgsRasterLayer(self.db_path, "Backscatter")
+        GrayStyler(2).postProcessLayer(layer, QgsProcessingContext(), QgsProcessingFeedback())
+        renderer = layer.renderer()
+        self.assertEqual(renderer.type(), "singlebandgray")
+        self.assertEqual(renderer.inputBand(), 2)
+        ce = renderer.contrastEnhancement()
+        ds = gdal.Open(self.db_path)              # keep a reference, or GDAL closes the file early
+        vh = ds.GetRasterBand(2).ReadAsArray()
+        low, high = np.nanpercentile(vh, [2, 98])
+        self.assertAlmostEqual(ce.minimumValue(), low, delta=1.0)     # QGIS estimates from a histogram
+        self.assertAlmostEqual(ce.maximumValue(), high, delta=1.0)
 
     def test_output_file_palette_is_not_black(self):
         mask_path = self.water_map("palette.tif")["OUTPUT"]

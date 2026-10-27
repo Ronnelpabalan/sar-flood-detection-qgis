@@ -3,10 +3,13 @@
 import os
 
 from qgis.core import (
+    QgsContrastEnhancement,
     QgsPalettedRasterRenderer,
     QgsProcessingException,
     QgsProcessingLayerPostProcessorInterface,
     QgsRasterFileWriter,
+    QgsRasterMinMaxOrigin,
+    QgsSingleBandGrayRenderer,
 )
 from qgis.PyQt.QtGui import QColor
 
@@ -63,13 +66,42 @@ class ClassStyler(QgsProcessingLayerPostProcessorInterface):
         layer.triggerRepaint()
 
 
+class GrayStyler(QgsProcessingLayerPostProcessorInterface):
+    """Shows one band of a raster in grey, stretched between its 2 % and 98 % values."""
+
+    def __init__(self, band, lower=0.02, upper=0.98):
+        super().__init__()
+        self.band, self.lower, self.upper = band, lower, upper
+
+    def postProcessLayer(self, layer, context, feedback):
+        renderer = QgsSingleBandGrayRenderer(layer.dataProvider(), self.band)
+        origin = renderer.minMaxOrigin()
+        origin.setLimits(QgsRasterMinMaxOrigin.CumulativeCut)
+        origin.setCumulativeCutLower(self.lower)
+        origin.setCumulativeCutUpper(self.upper)
+        renderer.setMinMaxOrigin(origin)
+        layer.setRenderer(renderer)
+        layer.setContrastEnhancement(QgsContrastEnhancement.StretchToMinimumMaximum,
+                                     QgsRasterMinMaxOrigin.CumulativeCut)
+        layer.triggerRepaint()
+
+
 # QGIS runs each tool on a temporary copy of the algorithm, so stylers are kept
 # here (one per output path) until QGIS has loaded and styled the layer.
 _STYLERS = {}
 
 
+def _attach(context, path, styler):
+    if context.willLoadLayerOnCompletion(path):
+        _STYLERS[path] = styler
+        context.layerToLoadOnCompletionDetails(path).setPostProcessor(styler)
+
+
 def style_on_load(context, path, classes):
     """Attach a ClassStyler to an output that QGIS will load when the tool finishes."""
-    if context.willLoadLayerOnCompletion(path):
-        _STYLERS[path] = ClassStyler(classes)
-        context.layerToLoadOnCompletionDetails(path).setPostProcessor(_STYLERS[path])
+    _attach(context, path, ClassStyler(classes))
+
+
+def gray_on_load(context, path, band):
+    """Show one band of an output in grey (2-98 % stretch) when QGIS loads it."""
+    _attach(context, path, GrayStyler(band))
