@@ -1,6 +1,6 @@
 # sar-flood-detection-qgis
 
-A QGIS Processing plugin that maps water and floods from Sentinel-1 radar images. It starts from the **raw Sentinel-1 GRD product as downloaded (`.SAFE.zip`)**: calibration, thermal noise removal, precise orbits, terrain correction with the Copernicus DEM, then speckle filtering, thresholds and pre/post-event change detection. It runs inside QGIS with no extra installs and no other software such as SNAP (only NumPy, SciPy and GDAL, which ship with QGIS).
+A QGIS Processing plugin that maps water and floods from Sentinel-1 radar images. It starts from the **raw Sentinel-1 GRD product as downloaded (`.SAFE.zip`)**: calibration, thermal noise removal, precise orbits, terrain correction with the Copernicus DEM, then speckle filtering, thresholds, pre/post-event change detection and a flood confidence map that also uses the terrain. It runs inside QGIS with no extra installs and no other software such as SNAP (only NumPy, SciPy and GDAL, which ship with QGIS).
 
 ![Flood map from two raw Sentinel-1 products, Thanh Hoa, Vietnam, after Typhoon Bualoi (2025)](docs/flood_change_thanhhoa_2025.png)
 
@@ -16,12 +16,13 @@ Radar satellites such as Sentinel-1 can see the ground through clouds and at nig
 1. **Clean the image.** Radar images are grainy ("speckle"). A small filter smooths each pixel with its neighbours.
 2. **Pick a darkness limit** (the threshold). Pixels darker than it are called water.
 3. **Compare two dates** (optional). If an area was dry before the flood and dark afterwards, it is marked as flooded; if it was dark on both dates, it is permanent water such as a lake or river.
+4. **Grade the evidence** (optional). Instead of a yes/no answer, give each pixel a confidence from 0 to 1: how dark it is after the event, how much darker it got, whether it was dry before, and (with a DEM) whether the ground is flat and low enough to flood.
 
 The result is a raster you can overlay on the radar image or a base map, with water or flood drawn in colour and everything else transparent.
 
 ## Tools
 
-The tools appear in the Processing Toolbox under **SAR Flood Detection**: *Preprocessing* holds the raw-product tool, *Flood mapping* the other two.
+The tools appear in the Processing Toolbox under **SAR Flood Detection**: *Preprocessing* holds the raw-product tool, *Flood mapping* the other three.
 
 ### Prepare Sentinel-1 GRD (from SAFE zip)
 
@@ -73,6 +74,42 @@ Output: 1 = water, 0 = not water, 255 = no data. The log reports the threshold u
 | Minimum decrease | 3.0 dB | A pixel only counts as flood if it also got this much darker. |
 
 Output: 1 = flood (water after, not before, and darker by at least the minimum decrease), 2 = permanent water (water on both dates), 0 = dry or no clear change, 255 = no data.
+
+### Flood confidence map (pre/post, optional terrain)
+
+The change-detection tool gives a yes/no answer, so a pixel just past the thresholds counts the same as one far past them. This tool scores how strong the evidence for flooding is, from 0 to 1. Each piece of evidence gets its own score, which rises smoothly and is **exactly 0.5 at the usual setting**:
+
+| # | Evidence | Score 0.5 at |
+|---|---|---|
+| 1 | The post-event image is dark | water threshold (−23.3 dB) |
+| 2 | The backscatter dropped | minimum decrease (3 dB) |
+| 3 | It was not water before | water threshold, on the pre-event image |
+| 4 | Not in layover or shadow | (pixels in the masks of either date get no score) |
+| 5a | The ground is flat (needs a DEM) | 5° slope, taken over 90 m |
+| 5b | The ground is low (needs a DEM) | 10 m above the nearest permanent water |
+
+The flood score is the **smallest** of these: every condition must hold, so the weakest evidence decides. As a result, **without a DEM, medium + high is exactly the flood of the change-detection tool** with the same settings; the terrain can only lower a score.
+
+**Why not combine the three existing maps by voting?** The fixed-threshold map, the Otsu map and the change-detection flood all come from the same filtered post-event image, so they are nested: on Thanh Hoa 2025, every flood pixel is inside the fixed-threshold water and every fixed-threshold pixel inside the Otsu water. "Two out of three" would mostly have meant the permanent water (501 of 516 km²), not likely flood.
+
+**Why the slope is ignored near the water.** The Copernicus GLO-30 DEM is a surface model: river banks, dikes and tree lines look steep in it. A plain 10 m slope test removed 3.5 km² of flood on Thanh Hoa, mostly in a thin line along a river (median 50 m from permanent water and 1.8 m above it). So the slope is taken over 90 m, and it is ignored for cells less than 3 m above the nearest permanent water: a cell at the water level can flood whatever the slope. Both distances are settings. This rule is reasoned, not fitted: there is no reference map to tune it against.
+
+| Setting | Default | Notes |
+|---|---|---|
+| Pre-event / post-event raster and band | — | Same pixel grid, as for change detection. |
+| Water threshold / decrease for flooding | −23.3 dB / 3.0 dB | Score 0.5 at these values. |
+| Layover/shadow masks | none | The masks from *Prepare Sentinel-1 GRD* (one per date). |
+| DEM | none | One or more tiles in metres, e.g. the GLO-30 tiles the preparation tool downloaded. Only height differences and slopes are used, so the vertical datum does not matter. Without a DEM, 5a and 5b are skipped. |
+| Slope at score 0.5 / distance for the slope | 5° / 90 m | |
+| Ignore the slope up to this height above permanent water | 3 m | |
+| Height above permanent water at score 0.5 | 10 m | A simple stand-in for "height above drainage": the height above the nearest pixel that was water on both dates, found on a 30 m grid. |
+
+Outputs:
+
+- **Classes**: 1 = low confidence (score 0.2–0.5), 2 = medium (above 0.5), 3 = high (0.8 and above), 4 = permanent water, 0 = not flood (transparent), 255 = no data. The log reports the area of each class in km².
+- **Score** (0–1, NaN = no data), shown with a colour ramp from transparent to dark red.
+
+This is a **confidence score, not a probability**: it has not been fitted to reference flood maps, so a score of 0.8 does not mean an 80 % chance of flooding.
 
 When QGIS loads a result, the background class is drawn transparent and the classes are named in the legend. The file itself also stores a colour table; GeoTIFF colour tables cannot hold transparency, so the background is white if the file is opened later without that styling.
 
@@ -139,6 +176,7 @@ This example uses only the plugin, from the downloaded zips to the flood map (th
 1. *Prepare Sentinel-1 GRD* on each zip, area lon 105.4–106.0, lat 19.6–20.2, 10 m, VV and VH, precise orbit, dB. The tool downloaded the two precise orbit files itself and used four GLO-30 DEM tiles. Both outputs are on the same grid (6,310 × 6,667 cells, UTM 48N); 99.2 % of cells have data, layover 0.21 %, shadow 0.00 %.
 2. *Flood map from change detection*: VH (band 2) of both dates, dB, median 5×5, water threshold −23.3 dB, minimum decrease 3 dB.
 3. *Water map from one image* on the post-event VH, with the fixed threshold and with Otsu.
+4. *Flood confidence map*: same images and settings as step 2, plus both layover/shadow masks and the four GLO-30 tiles, terrain settings at their defaults.
 
 **Results** (valid area 4,173.8 km²):
 
@@ -153,6 +191,24 @@ On land only (sea removed where the DEM is 0 m; 3,736 km²): **flood 283.5 km²*
 Water map of the 1 Oct image alone: 802.6 km² (19.23 %) with −23.3 dB; Otsu chose −21.80 dB and gave 893.4 km² (21.40 %). Both include the sea.
 
 What the map shows: flooding (red) lies in the low farmland beside the Mã and Chu rivers and over a large area in the south, with none on the hills in the west or on the limestone hills in the north; permanent water (blue) follows the rivers, the sea, the Bến En reservoir and coastal ponds. Many flood patches have straight edges that follow field blocks, which fits flooded rice fields; changes from field work (flooding or draining paddies) can look the same in radar. There is **no reference flood map for 1 Oct 2025**, so these areas are tool outputs, consistent with a river flood but not validated.
+
+**Flood confidence** (step 4; took 86 s in QGIS):
+
+![Flood confidence map, Thanh Hoa, 1 Oct 2025](docs/flood_confidence_thanhhoa_2025.png)
+
+*Dark red = high, orange = medium, yellow = low confidence flood, blue = permanent water. Base map © OpenStreetMap contributors.*
+
+| Class | Without DEM | With DEM (defaults) |
+|---|---|---|
+| High confidence flood | 216.3 km² | 212.0 km² (5.09 %) |
+| Medium confidence flood | 70.7 km² | 74.1 km² (1.78 %) |
+| Low confidence flood | 72.5 km² | 72.4 km² (1.74 %) |
+| Permanent water | 501.3 km² | 501.3 km² (12.04 %) |
+
+- Without the DEM, high + medium (287.0 km²) is the change-detection flood above, cell for cell where both have data. The masks of the two dates removed 11.3 km² from the valid area, almost all of it permanent water (12 flood cells).
+- About three quarters of the flood is high confidence: large field-shaped blocks in the lowland. Medium and low confidence pixels lie mostly along the edges of these blocks and in the coastal strip with its ponds.
+- The terrain changes little here because the flood is on very flat, low ground: over the flood pixels the slope has a median of 0.4° (99 % below 5.6°), and the height above the nearest permanent water a median of 0.2 m (99 % below 7.7 m). With the default terrain rule it removed 0.84 km² of high or medium flood, 0.18 km² of it on ground above 30 m (where only 0.81 km² of flood was mapped at all).
+- The low class (72.4 km²) is new information: pixels that the yes/no map called dry, but that are close to the thresholds.
 
 ## How accurate is the preprocessing?
 
@@ -175,10 +231,11 @@ These are checks of the plugin's geometry against ESA's own data and between dat
 - **Change detection needs matching images:** same orbit track, same polarisation and the same pixel grid, otherwise differences come from viewing geometry rather than the flood.
 - **A "before" image must really be dry.** In a test with two 2026 images of Thanh Hoa, the earlier image had twice as much water on land as the later one, so change detection found almost no flood. Check the pre-event image first.
 - **Flooded rice fields and farming changes look alike.** Paddies that are flooded or drained for cultivation change in the same way as floodwater.
+- **The flood confidence is not a probability.** The score and its class limits (0.2, 0.5, 0.8) are chosen, not fitted to reference maps. The terrain rule (slope over 90 m, ignored within 3 m of the water level) was set after looking at one event. The height above water is measured from the nearest permanent water, not along real drainage paths, and GLO-30 is a surface model (buildings, trees). The sea surface can also change between dates: about 3.5 km² of the Thanh Hoa flood lies on the sea.
 - **Whole bands are read into memory.** The flood tools read whole rasters; clip large scenes to the area of interest. The preparation tool needs about 1.2 GB for a 60 × 65 km area at 10 m.
 - **Preparation limits:** IW GRD products only (no SLC); the area must lie within one product (no mosaicking of neighbouring products); the output is sigma0 without radiometric terrain flattening, so slopes facing the satellite stay brighter than in RTC products such as Planetary Computer's. Noise removal can push very calm water down to the −50 dB floor; this does not affect thresholds around −23 dB.
 - **Downloads.** The first run for a new area or date needs internet access to `step.esa.int` (orbits) and `copernicus-dem-30m.s3.amazonaws.com` (DEM); after that the files come from the data folder.
-- **Experimental (version 0.2.0).** Tested on QGIS 3.40 on Windows.
+- **Experimental (version 0.3.0).** Tested on QGIS 3.40 on Windows.
 
 ## Installation
 
@@ -190,7 +247,7 @@ From source: copy (or link) the `sar_flood_detection` folder into your QGIS prof
 
 ## Tests
 
-91 tests on synthetic data: calibration and noise removal, orbit files and interpolation, the Range-Doppler model, terrain correction and layover/shadow, filters, thresholds and change detection, plus 13 end-to-end tests that run the Processing tools. Most need GDAL, so run them with QGIS's Python. The full runs on real Sentinel-1 products were checked by hand (see the examples above). On Windows:
+110 tests on synthetic data: calibration and noise removal, orbit files and interpolation, the Range-Doppler model, terrain correction and layover/shadow, filters, thresholds, change detection and the flood confidence score, plus 17 end-to-end tests that run the Processing tools. Most need GDAL, so run them with QGIS's Python. The full runs on real Sentinel-1 products were checked by hand (see the examples above). On Windows:
 
 ```bash
 "C:\Program Files\QGIS 3.40.4\bin\python-qgis-ltr.bat" -m unittest discover -s tests -t . -v
@@ -201,8 +258,9 @@ From source: copy (or link) the `sar_flood_detection` folder into your QGIS prof
 ```
 sar_flood_detection/          the plugin (copy this folder into QGIS)
   core/                       NumPy/SciPy only: calibration, annotation, orbit, geometry (Range-Doppler),
-                              terrain (resampling, layover/shadow), filters, thresholds, change detection
-  algorithms/                 the three Processing tools
+                              terrain (resampling, layover/shadow), filters, thresholds, change detection,
+                              flood confidence
+  algorithms/                 the four Processing tools
   safe.py                     reading .SAFE.zip products
   orbit_files.py, dem.py      finding, downloading and caching orbit files, DEM tiles and the geoid
   terrain_correction.py       the terrain-correction chain
@@ -248,6 +306,9 @@ docs/                         screenshots used in this README
 | Threshold | Rule "water if backscatter is below X dB". |
 | Otsu | Automatic method (Nobuyuki Otsu, 1979) that picks the threshold that best splits a histogram into two groups. |
 | Change detection | Comparing images before and after an event to find what changed. |
+| Confidence score | Here: a 0-1 grade of how strongly the evidence points to flooding; not a calibrated probability. |
+| Height above nearest water | Height of a cell above the nearest permanent-water pixel; a simple stand-in for HAND (height above nearest drainage). |
+| Surface model (DSM) | A DEM that includes buildings and trees; Copernicus GLO-30 is one. |
 | IoU | Intersection over union: overlap of mapped and true water divided by their combined area. 1 = perfect. |
 | Processing Toolbox | The QGIS panel that lists analysis tools; tools there also work in the Graphical Modeler and in batch mode. |
 

@@ -1,10 +1,11 @@
 [general]
 name=SAR Flood Detection
 qgisMinimumVersion=3.40
-description=Flood mapping from Sentinel-1 SAR, starting from the raw GRD product: terrain correction, speckle filtering, thresholding and change detection.
-about=Processing tools that map surface water and floods from Sentinel-1. "Prepare Sentinel-1 GRD" reads the downloaded .SAFE.zip directly and produces terrain-corrected sigma0 without other software: calibration, thermal noise removal, precise orbits from ESA, Copernicus GLO-30 DEM plus EGM2008 geoid, Range-Doppler terrain correction and a layover/shadow mask (orbit files and DEM tiles are downloaded once and cached). The flood tools work on any Sentinel-1 backscatter raster: optional Lee or median speckle filtering, fixed or Otsu thresholds, and pre/post-event change detection, giving a class raster styled with a transparent background.
-version=0.2.0
-changelog=0.2.0: new tool "Prepare Sentinel-1 GRD (from SAFE zip)": calibration, thermal noise removal, precise orbits, Copernicus DEM, Range-Doppler terrain correction, layover/shadow mask.
+description=Flood mapping from Sentinel-1 SAR, starting from the raw GRD product: terrain correction, speckle filtering, thresholding, change detection and a flood confidence map.
+about=Processing tools that map surface water and floods from Sentinel-1. "Prepare Sentinel-1 GRD" reads the downloaded .SAFE.zip directly and produces terrain-corrected sigma0 without other software: calibration, thermal noise removal, precise orbits from ESA, Copernicus GLO-30 DEM plus EGM2008 geoid, Range-Doppler terrain correction and a layover/shadow mask (orbit files and DEM tiles are downloaded once and cached). The flood tools work on any Sentinel-1 backscatter raster: optional Lee or median speckle filtering, fixed or Otsu thresholds, and pre/post-event change detection, giving a class raster styled with a transparent background. "Flood confidence map" grades each pixel from 0 to 1 (low / medium / high confidence) from the post-event darkness, the drop in backscatter, the pre-event state, layover/shadow masks and, optionally, slope and height above permanent water from a DEM.
+version=0.3.0
+changelog=0.3.0: new tool "Flood confidence map (pre/post, optional terrain)": 0-1 score and low/medium/high classes; without a DEM, medium + high equals the change-detection flood.
+    0.2.0: new tool "Prepare Sentinel-1 GRD (from SAFE zip)": calibration, thermal noise removal, precise orbits, Copernicus DEM, Range-Doppler terrain correction, layover/shadow mask.
     0.1.0: water map and change-detection tools.
 author=Ronnel Pabalan
 email=rupabalan@alum.up.edu.ph
@@ -12,7 +13,7 @@ repository=https://github.com/Ronnelpabalan/sar-flood-detection-qgis
 tracker=https://github.com/Ronnelpabalan/sar-flood-detection-qgis/issues
 homepage=https://github.com/Ronnelpabalan/sar-flood-detection-qgis
 hasProcessingProvider=yes
-tags=sar,sentinel-1,flood,water,remote sensing,processing,change detection
+tags=sar,sentinel-1,flood,water,remote sensing,processing,change detection,confidence
 category=Analysis
 icon=icon.svg
 experimental=True
